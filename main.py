@@ -1,4 +1,6 @@
 from collections import defaultdict, deque
+from typing import Tuple, List, Optional
+import sys
 
 DIRECTIONS = {
     'N': (-1, 0),
@@ -11,45 +13,112 @@ DIRECTIONS = {
     'NW': (-1, -1),
 }
 
-def is_valid(pos, board_size):
-    return 0 <= pos[0] < board_size[0] and 0 <= pos[1] < board_size[1]
+class GameMap:
+    def __init__(
+        self,
+        board_size: Tuple[int, int],
+        sudoku_size: Tuple[int, int],
+        start: Tuple[int, int],
+        goal: Tuple[int, int],
+        **kwargs
+    ):
+        self.board_size = board_size
+        self.sudoku_size = sudoku_size
+        self.start = start
+        self.goal = goal
 
-def create_empty_board(board_size):
-    return [[0 for _ in range(board_size[0])] for _ in range(board_size[1])]
+        # If board exists as an arg, I expect it to be a list of lists
+        value = kwargs.get('board', self._initialize_empty_board())
+        if not isinstance(value, list):
+            raise TypeError(f"board must be a list, got {type(value)}")
+        if not all(isinstance(row, list) for row in value):
+            raise TypeError("board must be a list of lists")
+        self.board = value
 
-def blocked_by_poles(poles, board_size, blocked):
-    for i, j in poles:
-        a = (i-1, j-1)
-        b = (i-1, j)
-        c = (i, j-1)
-        d = (i, j)
-        if is_valid(a, board_size) and is_valid(d, board_size):
-            blocked[a].add(d)
-            blocked[d].add(a)
-        if is_valid(b, board_size) and is_valid(c, board_size):
-            blocked[b].add(c)
-            blocked[c].add(b)
+        # If sword exists as an arg, I expect it to be a tuple
+        value = kwargs.get('sword', None)
+        if value is not None and not isinstance(value, tuple):
+            raise TypeError(f"sword must be a tuple, got {type(value)}")
+        self.sword = value
 
-def blocked_by_hwalls(walls, board_size, blocked):
-    for i, j in walls:
-        t = (i-1, j)
-        b = (i, j)
-        if is_valid(t, board_size) and is_valid(b, board_size):
-            blocked[t].add(b)
-            blocked[b].add(t)
-        poles = [(i, j), (i, j+1)]
-        blocked_by_poles(poles, board_size, blocked)
+        # I expect all of these to be lists
+        self.monsters = set(self._validate_list(kwargs.get('monsters', []), 'monsters'))
+        self.poles = set(self._validate_list(kwargs.get('poles', []), 'poles'))
+        self.hwalls = set(self._validate_list(kwargs.get('hwalls', []), 'hwalls'))
+        self.vwalls = set(self._validate_list(kwargs.get('vwalls', []), 'vwalls'))
+        self.constraints = self._validate_list(kwargs.get('constraints', []), 'constraints')
 
-def blocked_by_vwalls(walls, board_size, blocked):
-    for i, j in walls:
-        r = (i, j)
-        l = (i, j-1)
-        if is_valid(r, board_size) and is_valid(l, board_size):
-            blocked[r].add(l)
-            blocked[l].add(r)
-        poles = [(i, j), (i+1, j)]
-        blocked_by_poles(poles, board_size, blocked)
+        self.blocked = self._initialize_blocked()
 
+    def _validate_list(self, value, field):
+        if not isinstance(value, list):
+            raise TypeError(f"{field} must be a list, got {type(value)}")
+        return value
+
+    def _initialize_empty_board(self):
+        return [[0 for _ in range(self.board_size[0])] for _ in range(self.board_size[1])]
+
+    def _is_valid(self, pos):
+        return 0 <= pos[0] < self.board_size[0] and 0 <= pos[1] < self.board_size[1]
+
+    def _blocked_by_poles(self, poles, blocked):
+        for i, j in poles:
+            a = (i-1, j-1)
+            b = (i-1, j)
+            c = (i, j-1)
+            d = (i, j)
+            if self._is_valid(a) and self._is_valid(d):
+                blocked[a].add(d)
+                blocked[d].add(a)
+            if self._is_valid(b) and self._is_valid(c):
+                blocked[b].add(c)
+                blocked[c].add(b)
+
+    def _blocked_by_hwalls(self, blocked):
+        for i, j in self.hwalls:
+            t = (i-1, j)
+            b = (i, j)
+            if self._is_valid(t) and self._is_valid(b):
+                blocked[t].add(b)
+                blocked[b].add(t)
+            poles = [(i, j), (i, j+1)]
+            self._blocked_by_poles(poles, blocked)
+
+    def _blocked_by_vwalls(self, blocked):
+        for i, j in self.vwalls:
+            r = (i, j)
+            l = (i, j-1)
+            if self._is_valid(r) and self._is_valid(l):
+                blocked[r].add(l)
+                blocked[l].add(r)
+            poles = [(i, j), (i+1, j)]
+            self._blocked_by_poles(poles, blocked)
+
+    def _initialize_blocked(self):
+        blocked = defaultdict(set)
+        self._blocked_by_poles(self.poles, blocked)
+        self._blocked_by_hwalls(blocked)
+        self._blocked_by_vwalls(blocked)
+        return blocked
+
+class Constraint:
+    def check(self, gm: GameMap, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
+        raise NotImplementedError()
+
+class MaximumSumConstraint(Constraint):
+    def __init__(self, max_sum: int):
+        self.max_sum = max_sum
+
+    def check(self, gm: GameMap, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
+        return gm.board[from_pos[0]][from_pos[1]] + gm.board[to_pos[0]][to_pos[1]] <= self.max_sum
+
+class ModuloSumConstraint(Constraint):
+    def __init__(self, mod: int, allowed: List[int]):
+        self.mod = mod
+        self.allowed = allowed
+
+    def check(self, gm: GameMap, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
+        return (gm.board[from_pos[0]][from_pos[1]] + gm.board[to_pos[0]][to_pos[1]]) % self.mod in self.allowed
 
 def is_valid_sudoku(board, sudoku_size, num, pos):
     n = len(board)
@@ -101,28 +170,29 @@ def solve_sudoku(board, sudoku_size):
             yield from solve_sudoku(board, sudoku_size)
             board[i][j] = 0
 
-def go_dink(board, start, goal, sword, enemies, blocked, constraint = None):
-    rows = len(board)
-    cols = len(board[0])
+def go_dink(gm):
+    rows = len(gm.board)
+    cols = len(gm.board[0])
 
     def is_dink_alive(path):
         has_sword = False
-        curr_num = board[path[0][0]][path[0][1]]
-        for pos, num in zip(path[1:], [board[i][j] for i, j in path[1:]]):
-            if constraint and not constraint(curr_num, num):
+        cpos = path[0]
+
+        for npos in path[1:]:
+            if gm.constraints and any(not c.check(gm, cpos, npos) for c in gm.constraints):
                 return False
 
-            if pos in enemies:
+            if npos in gm.monsters:
                 if not has_sword:
                     return False
                 else:
-                    if curr_num < num:
+                    if gm.board[cpos[0]][cpos[1]] <= gm.board[npos[0]][npos[1]]:
                         return False
 
-            if sword and pos == sword:
+            if gm.sword and npos == gm.sword:
                 has_sword = True
 
-            curr_num = num
+            cpos = npos
 
         return True
 
@@ -130,86 +200,78 @@ def go_dink(board, start, goal, sword, enemies, blocked, constraint = None):
         last = path[-1]
         return 0 <= last[0] < rows and 0 <= last[1] < cols and is_dink_alive(path)
 
-    visited = {start}
-    queue = deque([(start, [start])])
+    visited = {gm.start}
+    queue = deque([(gm.start, [gm.start])])
 
     while queue:
         pos, path = queue.popleft()
 
-        if pos == goal:
+        if pos == gm.goal:
             return path
 
         for dx, dy in DIRECTIONS.values():
             dst = (pos[0] + dx, pos[1] + dy)
             new_path = path + [dst]
-            if dst not in blocked[pos] and dst not in visited and is_valid(new_path):
+            if dst not in gm.blocked[pos] and dst not in visited and is_valid(new_path):
                 visited.add(dst)
                 queue.append((dst, new_path))
 
     return None
 
-def solve(board, sudoku_size, start, goal, sword, enemies, blocked, constraint = None):
+def solve(gm: GameMap):
     print('Solving Dink...')
     solutions = []
-    for b in solve_sudoku(board, sudoku_size):
-        if path := go_dink(b, start, goal, sword, enemies, blocked, constraint):
+    for b in solve_sudoku(gm.board, gm.sudoku_size):
+        if path := go_dink(gm):
             solutions.append((b, path))
     return solutions
 
-if __name__ == '__main__':
-    act = 'e0'
-
-    match act:
+def create_act(id) -> Optional[GameMap]:
+    match id:
         case 'p1':
-            # Prelude 1
-            board_size = (3, 3)
-            board = create_empty_board(board_size)
-            sudoku_size = (1, 3)
-            start = (0, 0)
-            goal = (0, 1)
-            sword = None
-            enemies = set()
-            poles = [(2, 2)]
-            hwalls = []
-            vwalls = [(0, 1)]
-            constraint = lambda x, y: (x + y) % 2 == 0
-
-            blocked = defaultdict(set)
-            blocked_by_poles(poles, board_size, blocked)
-            blocked_by_hwalls(hwalls, board_size, blocked)
-            blocked_by_vwalls(vwalls, board_size, blocked)
+            return GameMap(
+                board_size = (3, 3),
+                sudoku_size = (1, 3),
+                start = (0, 0),
+                goal = (0, 1),
+                poles = [(2, 2)],
+                vwalls = [(0, 1)],
+                constraints = [ModuloSumConstraint(2, [0])],
+            )
         case 'p3':
-            # Prelude 3
-            board_size = (3, 3)
-            board = create_empty_board(board_size)
-            sudoku_size = (1, 3)
-            start = (0, 2)
-            goal = (2, 2)
-            sword = (0, 0)
-            enemies = set([(1, 0), (1, 1), (1, 2)])
-            constraint = lambda x, y: (x + y) <= 4
-            blocked = defaultdict(set)
+            return GameMap(
+                board_size = (3, 3),
+                sudoku_size = (1, 3),
+                start = (0, 2),
+                goal = (2, 2),
+                sword = (0, 0),
+                monsters = [(1, 0), (1, 1), (1, 2)],
+                constraints = [MaximumSumConstraint(4)],
+            )
         case 'e0':
-            # Episode 0
-            board_size = (4, 4)
-            board = create_empty_board(board_size)
-            sudoku_size = (2, 2)
-            start = (0, 0)
-            goal = (3, 3)
-            sword = (1, 0)
-            enemies = set([(0, 2), (0, 3), (1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (3, 1), (3, 2)])
-            poles = [(1, 1), (1, 2), (2, 3), (3, 1)]
-            hwalls = [(2, 0), (2, 1), (3, 2), (3, 3)]
-            vwalls = []
-            constraint = None
+            return GameMap(
+                board_size = (4, 4),
+                sudoku_size = (2, 2),
+                start = (0, 0),
+                goal = (3, 3),
+                sword = (1, 0),
+                monsters = [(0, 2), (0, 3), (1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (3, 1), (3, 2)],
+                poles = [(1, 1), (1, 2), (2, 3), (3, 1)],
+                hwalls = [(2, 0), (2, 1), (3, 2), (3, 3)],
+            )
+        case _:
+            return None
 
-            blocked = defaultdict(set)
-            blocked_by_poles(poles, board_size, blocked)
-            blocked_by_hwalls(hwalls, board_size, blocked)
-            blocked_by_vwalls(vwalls, board_size, blocked)
+if __name__ == '__main__':
+    id = 'e0'
+    gm = create_act(id)
+    if gm is None:
+        print(f"Invalid Act id: {id}")
+        sys.exit(1)
 
-    if sols := solve(board, sudoku_size, start, goal, sword, enemies, blocked, constraint):
+    if sols := solve(gm):
         for b, p in sols:
             print(b, p)
     else:
-        print('uh oh')
+        print('No solution found')
+
