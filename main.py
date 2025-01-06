@@ -109,7 +109,7 @@ class MaximumSumConstraint(Constraint):
     def __init__(self, max_sum: int):
         self.max_sum = max_sum
 
-    def check(self, gm: GameMap, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
+    def check(self, gm, from_pos, to_pos):
         return gm.board[from_pos[0]][from_pos[1]] + gm.board[to_pos[0]][to_pos[1]] <= self.max_sum
 
 class ModuloSumConstraint(Constraint):
@@ -117,7 +117,7 @@ class ModuloSumConstraint(Constraint):
         self.mod = mod
         self.allowed = allowed
 
-    def check(self, gm: GameMap, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
+    def check(self, gm, from_pos, to_pos):
         return (gm.board[from_pos[0]][from_pos[1]] + gm.board[to_pos[0]][to_pos[1]]) % self.mod in self.allowed
 
 def is_valid_sudoku(board, sudoku_size, num, pos):
