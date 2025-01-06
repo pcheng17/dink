@@ -11,6 +11,46 @@ DIRECTIONS = {
     'NW': (-1, -1),
 }
 
+def is_valid(pos, board_size):
+    return 0 <= pos[0] < board_size[0] and 0 <= pos[1] < board_size[1]
+
+def create_empty_board(board_size):
+    return [[0 for _ in range(board_size[0])] for _ in range(board_size[1])]
+
+def blocked_by_poles(poles, board_size, blocked):
+    for i, j in poles:
+        a = (i-1, j-1)
+        b = (i-1, j)
+        c = (i, j-1)
+        d = (i, j)
+        if is_valid(a, board_size) and is_valid(d, board_size):
+            blocked[a].add(d)
+            blocked[d].add(a)
+        if is_valid(b, board_size) and is_valid(c, board_size):
+            blocked[b].add(c)
+            blocked[c].add(b)
+
+def blocked_by_hwalls(walls, board_size, blocked):
+    for i, j in walls:
+        t = (i-1, j)
+        b = (i, j)
+        if is_valid(t, board_size) and is_valid(b, board_size):
+            blocked[t].add(b)
+            blocked[b].add(t)
+        poles = [(i, j), (i, j+1)]
+        blocked_by_poles(poles, board_size, blocked)
+
+def blocked_by_vwalls(walls, board_size, blocked):
+    for i, j in walls:
+        r = (i, j)
+        l = (i, j-1)
+        if is_valid(r, board_size) and is_valid(l, board_size):
+            blocked[r].add(l)
+            blocked[l].add(r)
+        poles = [(i, j), (i+1, j)]
+        blocked_by_poles(poles, board_size, blocked)
+
+
 def is_valid_sudoku(board, sudoku_size, num, pos):
     n = len(board)
     sr = sudoku_size[0]
@@ -19,13 +59,11 @@ def is_valid_sudoku(board, sudoku_size, num, pos):
     # Check this row
     for j in range(n):
         if board[pos[0]][j] == num and j != pos[1]:
-            # print(f"Board isn't valid because ({pos[0]}, {j}) already is {num}")
             return False
 
     # Check this column
     for i in range(n):
         if board[i][pos[1]] == num and i != pos[0]:
-            # print(f"Board isn't valid because ({i}, {pos[1]}) already is {num}")
             return False
 
     # Check this sub-block
@@ -36,7 +74,6 @@ def is_valid_sudoku(board, sudoku_size, num, pos):
             x = i + box_i * sr
             y = j + box_j * sc
             if board[x][y] == num and (x, y) != pos:
-                # print(f"Board isn't valid because ({x}, {y}) already is {num}")
                 return False;
 
     return True
@@ -64,7 +101,7 @@ def solve_sudoku(board, sudoku_size):
             yield from solve_sudoku(board, sudoku_size)
             board[i][j] = 0
 
-def go_dink(board, start, goal, sword, enemies, blocked):
+def go_dink(board, start, goal, sword, enemies, blocked, constraint = None):
     rows = len(board)
     cols = len(board[0])
 
@@ -72,7 +109,7 @@ def go_dink(board, start, goal, sword, enemies, blocked):
         has_sword = False
         curr_num = board[path[0][0]][path[0][1]]
         for pos, num in zip(path[1:], [board[i][j] for i, j in path[1:]]):
-            if num + curr_num > 4:
+            if constraint and not constraint(curr_num, num):
                 return False
 
             if pos in enemies:
@@ -82,7 +119,7 @@ def go_dink(board, start, goal, sword, enemies, blocked):
                     if curr_num < num:
                         return False
 
-            if pos == sword:
+            if sword and pos == sword:
                 has_sword = True
 
             curr_num = num
@@ -111,101 +148,68 @@ def go_dink(board, start, goal, sword, enemies, blocked):
 
     return None
 
-def solve(board_size, sudoku_size, start, goal, sword, enemies, blocked):
+def solve(board, sudoku_size, start, goal, sword, enemies, blocked, constraint = None):
     print('Solving Dink...')
-    board = [[0 for _ in range(board_size[0])] for _ in range(board_size[1])]
+    solutions = []
     for b in solve_sudoku(board, sudoku_size):
-        if path := go_dink(b, start, goal, sword, enemies, blocked):
-            return b, path
-
-def blocked_by_pole(a, dir, blocked):
-    match dir:
-        case 'NE':
-            b = (a[0]-1, a[1]+1)
-        case 'SE':
-            b = (a[0]+1, a[1]+1)
-        case 'SW':
-            b = (a[0]+1, a[1]-1)
-        case 'NW':
-            b = (a[0]-1, a[1]-1)
-    blocked[a].add(b)
-    blocked[b].add(a)
-    return blocked
-
-def blocked_by_wall(a, dir, blocked):
-    match dir:
-        case 'N':
-            b = (a[0]-1, a[1])
-        case 'E':
-            b = (a[0], a[1]+1)
-        case 'S':
-            b = (a[0]+1, a[1])
-        case 'W':
-            b = (a[0], a[1]-1)
-    blocked[a].add(b)
-    blocked[b].add(a)
-    return blocked
+        if path := go_dink(b, start, goal, sword, enemies, blocked, constraint):
+            solutions.append((b, path))
+    return solutions
 
 if __name__ == '__main__':
-    # board_size = (4, 4)
-    # sudoku_size = (2, 2)
-    # start = (0, 0)
-    # goal = (3, 3)
-    # sword = (1, 0)
-    # enemies = set()
-    # enemies.add((0, 2))
-    # enemies.add((0, 3))
-    # enemies.add((1, 1))
-    # enemies.add((1, 2))
-    # enemies.add((1, 3))
-    # enemies.add((2, 1))
-    # enemies.add((2, 2))
-    # enemies.add((3, 1))
-    # enemies.add((3, 2))
-    #
-    # # Need to encode what squares can't be reached...
-    # blocked = defaultdict(set)
-    #
-    # blocked = blocked_by_pole((0, 0), 'SE', blocked)
-    # blocked = blocked_by_pole((0, 1), 'SW', blocked)
-    # blocked = blocked_by_pole((0, 1), 'SE', blocked)
-    # blocked = blocked_by_pole((0, 2), 'SW', blocked)
-    #
-    # blocked = blocked_by_wall((1, 0), 'S', blocked)
-    #
-    # blocked = blocked_by_pole((1, 0), 'SE', blocked)
-    # blocked = blocked_by_pole((1, 1), 'SW', blocked)
-    #
-    # blocked = blocked_by_wall((1, 1), 'S', blocked)
-    #
-    # blocked = blocked_by_pole((1, 1), 'SE', blocked)
-    # blocked = blocked_by_pole((1, 2), 'SW', blocked)
-    # blocked = blocked_by_pole((1, 2), 'SE', blocked)
-    # blocked = blocked_by_pole((1, 3), 'SW', blocked)
-    #
-    # blocked = blocked_by_pole((2, 0), 'SE', blocked)
-    # blocked = blocked_by_pole((2, 1), 'SW', blocked)
-    # blocked = blocked_by_pole((2, 1), 'SE', blocked)
-    # blocked = blocked_by_pole((2, 2), 'SW', blocked)
-    # blocked = blocked_by_wall((2, 2), 'S', blocked)
-    # blocked = blocked_by_pole((2, 2), 'SE', blocked)
-    # blocked = blocked_by_pole((2, 3), 'SW', blocked)
-    # blocked = blocked_by_wall((2, 3), 'S', blocked)
+    episode = 'e0'
 
-    board_size = (3, 3)
-    sudoku_size = (1, 3)
-    start = (0, 2)
-    goal = (2, 2)
-    sword = (0, 0)
-    enemies = set()
-    enemies.add((1, 0))
-    enemies.add((1, 1))
-    enemies.add((1, 2))
-    blocked = defaultdict(set)
+    match episode:
+        case 'p1':
+            # Prelude 1
+            board_size = (3, 3)
+            board = create_empty_board(board_size)
+            sudoku_size = (1, 3)
+            start = (0, 0)
+            goal = (0, 1)
+            sword = None
+            enemies = set()
+            poles = [(2, 2)]
+            hwalls = []
+            vwalls = [(0, 1)]
+            constraint = lambda x, y: (x + y) % 2 == 0
 
-    sol = solve(board_size, sudoku_size, start, goal, sword, enemies, blocked)
-    if sol:
-        print(sol[0])
-        print(sol[1])
+            blocked = defaultdict(set)
+            blocked_by_poles(poles, board_size, blocked)
+            blocked_by_hwalls(hwalls, board_size, blocked)
+            blocked_by_vwalls(vwalls, board_size, blocked)
+        case 'p3':
+            # Prelude 3
+            board_size = (3, 3)
+            board = create_empty_board(board_size)
+            sudoku_size = (1, 3)
+            start = (0, 2)
+            goal = (2, 2)
+            sword = (0, 0)
+            enemies = set([(1, 0), (1, 1), (1, 2)])
+            constraint = lambda x, y: (x + y) <= 4
+            blocked = defaultdict(set)
+        case 'e0':
+            # Episode 0
+            board_size = (4, 4)
+            board = create_empty_board(board_size)
+            sudoku_size = (2, 2)
+            start = (0, 0)
+            goal = (3, 3)
+            sword = (1, 0)
+            enemies = set([(0, 2), (0, 3), (1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (3, 1), (3, 2)])
+            poles = [(1, 1), (1, 2), (2, 3), (3, 1)]
+            hwalls = [(2, 0), (2, 1), (3, 2), (3, 3)]
+            vwalls = []
+            constraint = None
+
+            blocked = defaultdict(set)
+            blocked_by_poles(poles, board_size, blocked)
+            blocked_by_hwalls(hwalls, board_size, blocked)
+            blocked_by_vwalls(vwalls, board_size, blocked)
+
+    if sols := solve(board, sudoku_size, start, goal, sword, enemies, blocked, constraint):
+        for b, p in sols:
+            print(b, p)
     else:
         print('uh oh')
