@@ -142,7 +142,7 @@ def go_dink(board, start, goal, sword, enemies, blocked, constraint = None):
         for dx, dy in DIRECTIONS.values():
             dst = (pos[0] + dx, pos[1] + dy)
             new_path = path + [dst]
-            if is_valid(new_path) and dst not in blocked[pos] and dst not in visited:
+            if dst not in blocked[pos] and dst not in visited and is_valid(new_path):
                 visited.add(dst)
                 queue.append((dst, new_path))
 
