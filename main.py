@@ -157,9 +157,9 @@ def solve(board, sudoku_size, start, goal, sword, enemies, blocked, constraint =
     return solutions
 
 if __name__ == '__main__':
-    episode = 'e0'
+    act = 'e0'
 
-    match episode:
+    match act:
         case 'p1':
             # Prelude 1
             board_size = (3, 3)
