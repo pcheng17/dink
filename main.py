@@ -233,7 +233,6 @@ def go_dink(gm):
     return None
 
 def solve(gm: GameMap):
-    print('Solving Dink...')
     solutions = []
     for b in solve_sudoku(gm.board, gm.sudoku_size):
         if path := go_dink(gm):
@@ -312,6 +311,7 @@ if __name__ == '__main__':
         print(f"Invalid Act id: {id}")
         sys.exit(1)
 
+    print('Solving Dink...')
     if sols := solve(gm):
         for b, p in sols:
             print(f"Board:")
