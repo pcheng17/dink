@@ -216,7 +216,6 @@ def go_dink(gm):
         last = path[-1]
         return 0 <= last[0] < rows and 0 <= last[1] < cols and can_dink_win(gm, path)
 
-    visited = {gm.start}
     queue = deque([(gm.start, [gm.start])])
 
     while queue:
@@ -228,8 +227,7 @@ def go_dink(gm):
         for dx, dy in DIRECTIONS.values():
             dst = (pos[0] + dx, pos[1] + dy)
             new_path = path + [dst]
-            if dst in gm.graph[pos] and dst not in visited and is_valid(new_path):
-                visited.add(dst)
+            if dst in gm.graph[pos] and dst not in path and is_valid(new_path):
                 queue.append((dst, new_path))
 
     return None
@@ -287,7 +285,12 @@ if __name__ == '__main__':
 
     if sols := solve(gm):
         for b, p in sols:
-            print(b, p)
+            print(f"Board:")
+            for row in b:
+                print(row)
+            print(f"Path:")
+            for x in p:
+                print(x)
     else:
         print('No solution found')
 
