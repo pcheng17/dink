@@ -136,6 +136,17 @@ class ModuloSumConstraint(Constraint):
     def check(self, gm, from_pos, to_pos):
         return (gm.board[from_pos[0]][from_pos[1]] + gm.board[to_pos[0]][to_pos[1]]) % self.mod in self.allowed
 
+class BlackOrbConstraint(Constraint):
+    def __init__(self, pos1: Tuple[int, int], pos2: Tuple[int, int], ratio: int):
+        self.pos1 = pos1
+        self.pos2 = pos2
+        self.ratio = ratio
+
+    def check(self, gm, from_pos, to_pos):
+        a = gm.board[self.pos1[0]][self.pos1[1]]
+        b = gm.board[self.pos2[0]][self.pos2[1]]
+        return a // b == self.ratio or b // a == self.ratio
+
 def is_valid_sudoku(board, sudoku_size, num, pos):
     n = len(board)
     sr = sudoku_size[0]
@@ -273,11 +284,24 @@ def create_act(id) -> Optional[GameMap]:
                 poles = [(1, 1), (1, 2), (2, 3), (3, 1)],
                 hwalls = [(2, 0), (2, 1), (3, 2), (3, 3)],
             )
+        case 'e1':
+            return GameMap(
+                board_size = (6, 6),
+                sudoku_size = (2, 3),
+                start = (2, 0),
+                goal = (1, 3),
+                sword = (2, 2),
+                monsters = [(2, 5), (4, 1), (4, 2), (4, 3), (5, 1)],
+                poles = [(3, 2), (5, 2)],
+                hwalls = [(1, 5), (2, 0), (2, 1), (2, 2), (2, 3), (2, 4), (4, 0), (4, 2), (4, 3), (4, 4)],
+                vwalls = [(1, 4), (2, 3), (3, 3), (4, 3)],
+                constraints = [BlackOrbConstraint((2, 3), (3, 3), 2)],
+            )
         case _:
             return None
 
 if __name__ == '__main__':
-    id = 'e0'
+    id = 'e1'
     gm = create_act(id)
     if gm is None:
         print(f"Invalid Act id: {id}")
