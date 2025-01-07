@@ -48,7 +48,7 @@ class GameMap:
         self.vwalls = set(self._validate_list(kwargs.get('vwalls', []), 'vwalls'))
         self.constraints = self._validate_list(kwargs.get('constraints', []), 'constraints')
 
-        self.blocked = self._initialize_blocked()
+        self.graph = self._initialize_graph()
 
     def _validate_list(self, value, field):
         if not isinstance(value, list):
@@ -61,45 +61,61 @@ class GameMap:
     def _is_valid(self, pos):
         return 0 <= pos[0] < self.board_size[0] and 0 <= pos[1] < self.board_size[1]
 
-    def _blocked_by_poles(self, poles, blocked):
-        for i, j in poles:
-            a = (i-1, j-1)
-            b = (i-1, j)
-            c = (i, j-1)
-            d = (i, j)
-            if self._is_valid(a) and self._is_valid(d):
-                blocked[a].add(d)
-                blocked[d].add(a)
-            if self._is_valid(b) and self._is_valid(c):
-                blocked[b].add(c)
-                blocked[c].add(b)
+    def _initialize_graph(self):
+        graph = defaultdict(set)
 
-    def _blocked_by_hwalls(self, blocked):
+        # Each wall also adds two poles:
+        poles = self.poles.copy()
         for i, j in self.hwalls:
-            t = (i-1, j)
-            b = (i, j)
-            if self._is_valid(t) and self._is_valid(b):
-                blocked[t].add(b)
-                blocked[b].add(t)
-            poles = [(i, j), (i, j+1)]
-            self._blocked_by_poles(poles, blocked)
-
-    def _blocked_by_vwalls(self, blocked):
+            poles.add((i, j))
+            poles.add((i, j+1))
         for i, j in self.vwalls:
-            r = (i, j)
-            l = (i, j-1)
-            if self._is_valid(r) and self._is_valid(l):
-                blocked[r].add(l)
-                blocked[l].add(r)
-            poles = [(i, j), (i+1, j)]
-            self._blocked_by_poles(poles, blocked)
+            poles.add((i, j))
+            poles.add((i+1, j))
 
-    def _initialize_blocked(self):
-        blocked = defaultdict(set)
-        self._blocked_by_poles(self.poles, blocked)
-        self._blocked_by_hwalls(blocked)
-        self._blocked_by_vwalls(blocked)
-        return blocked
+        for i in range(self.board_size[0]):
+            for j in range(self.board_size[1]):
+                # North
+                x, y = i - 1, j
+                if self._is_valid((x, y)) and (i, j) not in self.hwalls:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+                # East
+                x, y = i, j + 1
+                if self._is_valid((x, y)) and (i, j + 1) not in self.vwalls:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+                # South
+                x, y = i + 1, j
+                if self._is_valid((x, y)) and (i + 1, j) not in self.hwalls:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+                # West
+                x, y = i, j - 1
+                if self._is_valid((x, y)) and (i, j) not in self.vwalls:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+                # North-East
+                x, y = i - 1, j + 1
+                if self._is_valid((x, y)) and (i, j) not in self.hwalls and (i, j + 1) not in self.vwalls and (i, j + 1) not in poles:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+                # South-East
+                x, y = i + 1, j + 1
+                if self._is_valid((x, y)) and (i + 1, j) not in self.hwalls and (i, j + 1) not in self.vwalls and (i + 1, j + 1) not in poles:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+                # South-West
+                x, y = i + 1, j - 1
+                if self._is_valid((x, y)) and (i + 1, j) not in self.hwalls and (i, j) not in self.vwalls and (i + 1, j) not in poles:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+                # North-West
+                x, y = i - 1, j - 1
+                if self._is_valid((x, y)) and (i, j) not in self.hwalls and (i, j) not in self.vwalls and (i, j) not in poles:
+                    graph[(i, j)].add((x, y))
+                    graph[(x, y)].add((i, j))
+        return graph
 
 class Constraint:
     def check(self, gm: GameMap, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
@@ -170,35 +186,35 @@ def solve_sudoku(board, sudoku_size):
             yield from solve_sudoku(board, sudoku_size)
             board[i][j] = 0
 
+def can_dink_win(gm, path):
+    has_sword = False
+    cpos = path[0]
+
+    for npos in path[1:]:
+        if gm.constraints and any(not c.check(gm, cpos, npos) for c in gm.constraints):
+            return False
+
+        if npos in gm.monsters:
+            if not has_sword:
+                return False
+            else:
+                if gm.board[cpos[0]][cpos[1]] <= gm.board[npos[0]][npos[1]]:
+                    return False
+
+        if gm.sword and npos == gm.sword:
+            has_sword = True
+
+        cpos = npos
+
+    return True
+
 def go_dink(gm):
     rows = len(gm.board)
     cols = len(gm.board[0])
 
-    def is_dink_alive(path):
-        has_sword = False
-        cpos = path[0]
-
-        for npos in path[1:]:
-            if gm.constraints and any(not c.check(gm, cpos, npos) for c in gm.constraints):
-                return False
-
-            if npos in gm.monsters:
-                if not has_sword:
-                    return False
-                else:
-                    if gm.board[cpos[0]][cpos[1]] <= gm.board[npos[0]][npos[1]]:
-                        return False
-
-            if gm.sword and npos == gm.sword:
-                has_sword = True
-
-            cpos = npos
-
-        return True
-
     def is_valid(path):
         last = path[-1]
-        return 0 <= last[0] < rows and 0 <= last[1] < cols and is_dink_alive(path)
+        return 0 <= last[0] < rows and 0 <= last[1] < cols and can_dink_win(gm, path)
 
     visited = {gm.start}
     queue = deque([(gm.start, [gm.start])])
@@ -212,7 +228,7 @@ def go_dink(gm):
         for dx, dy in DIRECTIONS.values():
             dst = (pos[0] + dx, pos[1] + dy)
             new_path = path + [dst]
-            if dst not in gm.blocked[pos] and dst not in visited and is_valid(new_path):
+            if dst in gm.graph[pos] and dst not in visited and is_valid(new_path):
                 visited.add(dst)
                 queue.append((dst, new_path))
 
